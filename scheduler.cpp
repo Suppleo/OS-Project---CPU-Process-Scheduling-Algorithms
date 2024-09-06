@@ -92,12 +92,12 @@ void write_output_file(const std::string& filename) {
     }
 
     for (int cpu : cpu_schedule) {
-        file << (cpu == 0 ? "- " : std::to_string(cpu) + " ");
+        file << (cpu == 0 ? "_ " : std::to_string(cpu) + " ");
     }
     file << "\n";
 
     for (int r : r_schedule) {
-        file << (r == 0 ? "- " : std::to_string(r) + " ");
+        file << (r == 0 ? "_ " : std::to_string(r) + " ");
     }
     file << "\n";
 
@@ -140,6 +140,11 @@ void fcfs_scheduler() {
                         io_exec_flag = false;
                     }
                     io_queue.push(current_cpu_process);
+                    // Push the first process to the I/O ready queue, but this process starts after 1 unit of time
+                    if (current_io_process == nullptr) {
+                        current_io_process = io_queue.front();
+                        io_queue.pop();
+                    }
                 } else {
                     completed++;
                 }
@@ -179,7 +184,13 @@ void fcfs_scheduler() {
                 } else {
                     completed++;
                 }
-                current_io_process = nullptr;
+                
+                if (!io_queue.empty()) {
+                    current_io_process = io_queue.front();
+                    io_queue.pop();
+                } else {
+                    current_io_process = nullptr;
+                }
             }
         } else {
             r_schedule.push_back(0);
@@ -192,30 +203,47 @@ void fcfs_scheduler() {
 
 // Round Robin (RR) scheduler
 void rr_scheduler(int quantum) {
-    std::queue<Process*> cpu_queue;
+    std::deque<Process*> cpu_queue;
     std::queue<Process*> io_queue;
     int time_in_quantum = 0;
     Process* temp_cpu_process = nullptr;
+    std::vector<Process*> new_processes;
+
+    auto compare_rr = [](Process* a, Process* b) {
+        if (a->arrival_time == current_time && b->arrival_time != current_time)
+            return true; // a has higher priority
+        if (b->arrival_time == current_time && a->arrival_time != current_time)
+            return false; // b has higher priority
+        if (a->just_from_io && !b->just_from_io)
+            return true; // a just moved from I/O, higher priority
+        if (b->just_from_io && !a->just_from_io)
+            return false; // b just moved from I/O, higher priority
+        return a->id < b->id; // If all else is equal, choose the process with lower ID
+    };
 
     while (completed < processes.size() || !cpu_queue.empty() || !io_queue.empty() || current_cpu_process != nullptr || current_io_process != nullptr) {
         // Check for newly arrived processes
         for (auto& process : processes) {
             if (process.arrival_time == current_time && process.current_burst < process.bursts.size()) {
-                cpu_queue.push(&process);
+                new_processes.push_back(&process);
             }
         }
 
-        // Check any process remains after conflict in the entrance of the ready queue scenario
-        if (temp_cpu_process != nullptr){
-            cpu_queue.push(temp_cpu_process);
-            temp_cpu_process = nullptr;
+        // Sort new processes according to priority
+        std::sort(new_processes.begin(), new_processes.end(), compare_rr);
+
+        // Add sorted new processes to the end of the queue
+        for (auto* process : new_processes) {
+            cpu_queue.push_back(process);
         }
+        new_processes.clear();
 
         // Handle CPU scheduling
         if (current_cpu_process == nullptr && !cpu_queue.empty()) {
             current_cpu_process = cpu_queue.front();
-            cpu_queue.pop();
+            cpu_queue.pop_front();
             time_in_quantum = 0;
+            current_cpu_process->just_from_io = false; // Reset the flag when process starts CPU burst
         }
 
         if (current_cpu_process != nullptr) {
@@ -230,27 +258,18 @@ void rr_scheduler(int quantum) {
                         io_exec_flag = false;
                     }
                     io_queue.push(current_cpu_process);
+                    // Push the first process to the I/O ready queue, but this process starts after 1 unit of time
+                    if (current_io_process == nullptr) {
+                        current_io_process = io_queue.front();
+                        io_queue.pop();
+                    }
                 } else {
                     completed++;
                 }
                 current_cpu_process = nullptr;
                 time_in_quantum = 0;
             } else if (time_in_quantum == quantum) {
-                // Check if a new process will arrive in the next time unit
-                bool new_process_next = false;
-                for (const auto& process : processes) {
-                    if (process.arrival_time == current_time + 1 && process.current_burst < process.bursts.size()) {
-                        new_process_next = true;
-                        break;
-                    }
-                }
-                
-                if (new_process_next) {
-                    temp_cpu_process = current_cpu_process;
-                } else {
-                    cpu_queue.push(current_cpu_process);
-                }
-
+                new_processes.push_back(current_cpu_process);
                 current_cpu_process = nullptr;
                 time_in_quantum = 0;
             }
@@ -271,24 +290,18 @@ void rr_scheduler(int quantum) {
             if (current_io_process->bursts[current_io_process->current_burst] == 0) {
                 current_io_process->current_burst++;
                 if (current_io_process->current_burst < current_io_process->bursts.size()) {
-                    // Check if a new process will arrive in the next time unit
-                    bool new_process_next = false;
-                    for (const auto& process : processes) {
-                        if (process.arrival_time == current_time + 1 && process.current_burst < process.bursts.size()) {
-                            new_process_next = true;
-                            break;
-                        }
-                    }
-                    
-                    if (new_process_next) {
-                        temp_cpu_process = current_io_process;                   
-                    } else {
-                        cpu_queue.push(current_io_process);
-                    }
+                    current_io_process->just_from_io = true;  // Set the flag when process finishes I/O burst
+                    new_processes.push_back(current_io_process);
                 } else {
                     completed++;
                 }
-                current_io_process = nullptr;
+                
+                if (!io_queue.empty()) {
+                    current_io_process = io_queue.front();
+                    io_queue.pop();
+                } else {
+                    current_io_process = nullptr;
+                }
             }
         } else {
             r_schedule.push_back(0);
@@ -348,6 +361,11 @@ void sjf_scheduler() {
                         io_exec_flag = false;
                     }
                     io_queue.push(current_cpu_process);
+                    // Push the first process to the I/O ready queue, but this process starts after 1 unit of time
+                    if (current_io_process == nullptr) {
+                        current_io_process = io_queue.front();
+                        io_queue.pop();
+                    }
                 } else {
                     completed++;
                 }
@@ -376,7 +394,13 @@ void sjf_scheduler() {
                 } else {
                     completed++;
                 }
-                current_io_process = nullptr;
+                
+                if (!io_queue.empty()) {
+                    current_io_process = io_queue.front();
+                    io_queue.pop();
+                } else {
+                    current_io_process = nullptr;
+                }
             }
         } else {
             r_schedule.push_back(0);
@@ -425,17 +449,18 @@ void srtn_scheduler() {
         if (!cpu_queue.empty()) {
             Process* shortest_process = cpu_queue.front(); // The shortest process is at the front of the heap
             
-            if (current_cpu_process == nullptr || compare_srtn(current_cpu_process, shortest_process)) {
-                if (current_cpu_process != nullptr) {
-                    cpu_queue.push_back(current_cpu_process);
-                    std::push_heap(cpu_queue.begin(), cpu_queue.end(), compare_srtn);
-                }
+            if (current_cpu_process == nullptr) {
                 std::pop_heap(cpu_queue.begin(), cpu_queue.end(), compare_srtn);
                 current_cpu_process = cpu_queue.back();
                 cpu_queue.pop_back();
                 current_cpu_process->just_from_io = false;  // Reset the flag when process starts CPU burst
-            } else {
+            } else if (shortest_process->remaining_time < current_cpu_process->remaining_time) {
+                cpu_queue.push_back(current_cpu_process);
                 std::push_heap(cpu_queue.begin(), cpu_queue.end(), compare_srtn);
+                std::pop_heap(cpu_queue.begin(), cpu_queue.end(), compare_srtn);
+                current_cpu_process = cpu_queue.back();
+                cpu_queue.pop_back();
+                current_cpu_process->just_from_io = false;  // Reset the flag when process starts CPU burst
             }
         }
 
@@ -451,6 +476,11 @@ void srtn_scheduler() {
                         io_exec_flag = false;
                     }
                     io_queue.push(current_cpu_process);
+                    // Push the first process to the I/O ready queue, but this process starts after 1 unit of time
+                    if (current_io_process == nullptr) {
+                        current_io_process = io_queue.front();
+                        io_queue.pop();
+                    }
                     current_cpu_process->remaining_time = current_cpu_process->bursts[current_cpu_process->current_burst];
                 } else {
                     completed++;
@@ -481,7 +511,13 @@ void srtn_scheduler() {
                 } else {
                     completed++;
                 }
-                current_io_process = nullptr;
+                
+                if (!io_queue.empty()) {
+                    current_io_process = io_queue.front();
+                    io_queue.pop();
+                } else {
+                    current_io_process = nullptr;
+                }
             }
         } else {
             r_schedule.push_back(0);
