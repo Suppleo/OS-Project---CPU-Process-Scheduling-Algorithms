@@ -16,7 +16,7 @@ This project is a C++ program that simulates various process scheduling algorith
 ## Requirements
 
 - C++ compiler (C++11 or later)
-- Input and output files should be in text format (*.txt)
+- Input and output files should be in text format (\*.txt)
 
 ## Usage
 
@@ -27,6 +27,7 @@ Compile the program using your C++ compiler. Then run the executable from the co
 ```
 
 Where:
+
 - `<input_file>`: Path to the input file containing process information
 - `<output_file>`: Path to the output file where the Gantt chart will be saved
 - `<algorithm>`: An integer from 1 to 4 representing the scheduling algorithm:
@@ -39,6 +40,7 @@ Where:
 ## Input File Format
 
 The input file should follow this format:
+
 - The first line specifies the number of processes to be scheduled.
 - Each subsequent line describes a process with the following information:
   ```
@@ -47,25 +49,28 @@ The input file should follow this format:
   Where the pattern `[<CPU Burst Time> <Resource Usage Time>]` can repeat multiple times for each process.
 
 Example:
+
 ```
 3
 0 5 3 4
 1 4
-2 3 4
+2 3 3
 ```
 
 ## Output File Format
 
 The output file contains two lines:
+
 1. A sequence of integers representing the CPU scheduling Gantt chart
 2. A sequence of integers representing the resource R scheduling Gantt chart
 
-Numbers 1, 2, 3, and 4 denote processes P1, P2, P3, and P4, respectively. A hyphen (-) indicates an idle time slot.
+Numbers 1, 2, 3, and 4 denote processes P1, P2, P3, and P4, respectively. A hyphen (\_) indicates an idle time slot.
 
 Example:
+
 ```
 1 1 1 1 1 2 2 2 2 3 3 3 1 1 1 1
-- - - - - 1 1 1 - - - 3 3 3
+_ _ _ _ _ 1 1 1 _ _ _ _ 3 3 3 _
 ```
 
 ## Notes
